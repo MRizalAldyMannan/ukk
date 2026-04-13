@@ -10,12 +10,14 @@ class Transaksi extends Component
     public $total_harga = 0;
     public $bayar = 0;
     public $kembalian = 0;
+    
+    // Properti untuk menampung data struk terakhir
+    public $transaksiTerakhir = null;
 
     public function tambahKeKeranjang($idProduk)
     {
         $produk = \App\Models\Produk::findOrFail($idProduk);
 
-        // Cek stok
         if ($produk->stok < 1) {
             session()->flash('error', 'Stok produk ' . $produk->nama_produk . ' habis!');
             return;
@@ -24,7 +26,6 @@ class Transaksi extends Component
         $keranjangIndex = array_search($idProduk, array_column($this->keranjang, 'id'));
 
         if ($keranjangIndex !== false) {
-            // Cek jika qty melebihi stok
             if ($this->keranjang[$keranjangIndex]['qty'] >= $produk->stok) {
                 session()->flash('error', 'Stok tidak mencukupi untuk ditambah!');
                 return;
@@ -75,6 +76,7 @@ class Transaksi extends Component
             return;
         }
 
+        // 1. Simpan Transaksi ke Database
         $transaksi = \App\Models\Transaksi::create([
             'kode_transaksi' => 'TRX-' . time(),
             'total_harga' => $this->total_harga,
@@ -89,19 +91,33 @@ class Transaksi extends Component
                 'harga' => $item['harga']
             ]);
 
-            // Kurangi stok
+            // Kurangi stok produk
             $produk = \App\Models\Produk::find($item['id']);
             $produk->stok -= $item['qty'];
             $produk->save();
         }
 
-        // Reset
+        // 2. Amankan data untuk Struk sebelum di-reset
+        $this->transaksiTerakhir = [
+            'kode' => $transaksi->kode_transaksi,
+            'kasir' => auth()->user()->name, // Mengambil nama yang jaga kasir
+            'waktu' => now()->format('d/m/Y H:i'),
+            'items' => $this->keranjang,
+            'total' => $this->total_harga,
+            'bayar' => $this->bayar,
+            'kembalian' => $this->kembalian,
+        ];
+
+        // 3. Reset State Input
         $this->keranjang = [];
         $this->total_harga = 0;
         $this->bayar = 0;
         $this->kembalian = 0;
 
         session()->flash('success', 'Transaksi berhasil disimpan!');
+
+        // 4. Trigger print di browser
+        $this->dispatch('cetak-struk');
     }
 
     public function render()
@@ -110,4 +126,4 @@ class Transaksi extends Component
             'semuaProduk' => \App\Models\Produk::where('stok', '>', 0)->get()
         ]);
     }
-}
+}   

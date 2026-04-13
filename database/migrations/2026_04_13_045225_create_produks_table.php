@@ -7,16 +7,17 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     public function up(): void
-    {
-        Schema::create('produks', function (Blueprint $table) {
-            $table->id();
-            $table->string('kode_produk')->unique();
-            $table->string('nama_produk');
-            $table->integer('harga');
-            $table->integer('stok');
-            $table->timestamps();
-        });
-    }
+{
+    Schema::create('produks', function (Blueprint $table) {
+        $table->id();
+        $table->string('kode_produk')->unique();
+        $table->string('nama_produk');
+        $table->integer('harga');
+        $table->integer('stok');
+        $table->string('foto')->nullable(); 
+        $table->timestamps();
+    });
+}
 
     public function down(): void
     {

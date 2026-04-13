@@ -3,20 +3,36 @@
 namespace App\Livewire;
 
 use Livewire\Component;
-use App\Models\Produk as ProdukModel; // Kita gunakan alias yang sangat berbeda
-use Illuminate\Support\Facades\Auth;
+use App\Models\Produk as ProdukModel;
+use Livewire\WithFileUploads;
+use Illuminate\Support\Facades\Storage; // Tambahkan ini untuk mempermudah hapus file
 
 class Produk extends Component
 {
-    public $pilihanMenu = 'lihat';
-    public $kode_produk, $nama_produk, $harga, $stok;
-    public $produkTerpilih;
+    use WithFileUploads; 
 
-    // Pastikan mount untuk keamanan jika perlu
-    public function mount()
+    public $cari = '';
+    public $sortKolom = 'nama_produk';
+    public $sortOrder = 'asc';
+    public $pilihanMenu = 'lihat';
+
+    public $id_produk, $kode_produk, $nama_produk, $harga, $stok, $foto;
+
+    public function urutkan($kolom)
     {
-        if (!Auth::check()) {
-            return redirect()->route('login');
+        if ($this->sortKolom === $kolom) {
+            $this->sortOrder = $this->sortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->sortKolom = $kolom;
+            $this->sortOrder = 'asc';
+        }
+    }
+
+    public function pilihMenu($menu)
+    {
+        $this->pilihanMenu = $menu;
+        if ($menu == 'tambah') {
+            $this->reset(['kode_produk', 'nama_produk', 'harga', 'stok', 'id_produk', 'foto']);
         }
     }
 
@@ -26,83 +42,100 @@ class Produk extends Component
             'kode_produk' => 'required|unique:produks,kode_produk',
             'nama_produk' => 'required',
             'harga' => 'required|numeric',
-            'stok' => 'required|numeric'
+            'stok' => 'required|numeric',
+            'foto' => 'nullable|image|max:1024', 
         ]);
+
+        $pathFoto = null;
+        if ($this->foto) {
+            // Memastikan folder 'produk' ada dan menyimpan file
+            $pathFoto = $this->foto->store('produk', 'public');
+        }
 
         ProdukModel::create([
             'kode_produk' => $this->kode_produk,
             'nama_produk' => $this->nama_produk,
             'harga' => $this->harga,
             'stok' => $this->stok,
+            'foto' => $pathFoto,
         ]);
 
-        session()->flash('message', 'Produk berhasil ditambahkan');
-        $this->batal();
+        // SANGAT PENTING: reset() membersihkan property agar input file tidak error di upload berikutnya
+        $this->reset(['kode_produk', 'nama_produk', 'harga', 'stok', 'foto', 'id_produk']); 
+        $this->pilihMenu('lihat');
     }
 
     public function pilihEdit($id)
     {
-        $this->produkTerpilih = ProdukModel::findOrFail($id);
-        $this->kode_produk = $this->produkTerpilih->kode_produk;
-        $this->nama_produk = $this->produkTerpilih->nama_produk;
-        $this->harga = $this->produkTerpilih->harga;
-        $this->stok = $this->produkTerpilih->stok;
+        $produk = ProdukModel::findOrFail($id);
+        $this->id_produk = $produk->id;
+        $this->kode_produk = $produk->kode_produk;
+        $this->nama_produk = $produk->nama_produk;
+        $this->harga = $produk->harga;
+        $this->stok = $produk->stok;
+        $this->foto = null; // Reset input foto saat mulai edit
         $this->pilihanMenu = 'edit';
     }
 
     public function simpanEdit()
     {
-        if (!$this->produkTerpilih) return;
-
         $this->validate([
-            'kode_produk' => 'required|unique:produks,kode_produk,' . $this->produkTerpilih->id,
+            'kode_produk' => 'required|unique:produks,kode_produk,'.$this->id_produk,
             'nama_produk' => 'required',
             'harga' => 'required|numeric',
-            'stok' => 'required|numeric'
+            'stok' => 'required|numeric',
+            'foto' => 'nullable|image|max:1024',
         ]);
 
-        $this->produkTerpilih->update([
+        $produk = ProdukModel::findOrFail($this->id_produk);
+        
+        $dataUpdate = [
             'kode_produk' => $this->kode_produk,
             'nama_produk' => $this->nama_produk,
             'harga' => $this->harga,
             'stok' => $this->stok,
-        ]);
+        ];
 
-        session()->flash('message', 'Produk berhasil diupdate');
-        $this->batal();
+        if ($this->foto) {
+            // Hapus foto LAMA jika user upload foto BARU saat edit
+            if ($produk->foto) {
+                Storage::disk('public')->delete($produk->foto);
+            }
+            $dataUpdate['foto'] = $this->foto->store('produk', 'public');
+        }
+
+        $produk->update($dataUpdate);
+        $this->reset(['foto']); // Bersihkan property foto setelah update
+        $this->pilihMenu('lihat');
     }
 
     public function pilihHapus($id)
     {
-        $this->produkTerpilih = ProdukModel::findOrFail($id);
+        $produk = ProdukModel::findOrFail($id);
+        $this->id_produk = $produk->id;
+        $this->nama_produk = $produk->nama_produk;
         $this->pilihanMenu = 'hapus';
     }
 
     public function hapus()
     {
-        if ($this->produkTerpilih) {
-            $this->produkTerpilih->delete();
-            session()->flash('message', 'Produk berhasil dihapus');
+        $produk = ProdukModel::findOrFail($this->id_produk);
+        
+        if ($produk->foto) {
+            Storage::disk('public')->delete($produk->foto);
         }
-        $this->batal();
-    }
-
-    public function pilihMenu($menu)
-    {
-        $this->pilihanMenu = $menu;
-    }
-
-    public function batal()
-    {
-        $this->reset(['kode_produk', 'nama_produk', 'harga', 'stok', 'produkTerpilih']);
-        $this->pilihanMenu = 'lihat';
+        
+        $produk->delete();
+        $this->pilihMenu('lihat');
     }
 
     public function render()
     {
         return view('livewire.produk', [
-            // Gunakan alias ProdukModel di sini
-            'semuaProduk' => ProdukModel::latest()->get()
+            'semuaProduk' => ProdukModel::where('nama_produk', 'like', '%' . $this->cari . '%')
+                ->orWhere('kode_produk', 'like', '%' . $this->cari . '%')
+                ->orderBy($this->sortKolom, $this->sortOrder)
+                ->get()
         ]);
     }
 }
